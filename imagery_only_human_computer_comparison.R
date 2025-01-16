@@ -36,8 +36,6 @@ JoinInputs <- function(human.data, computer.data) {
       year = year.x,
       site = site.x,
       sample_id = sample_id.x,
-      species_human = species.x,
-      species_computer = species.y
     )
 
 }
@@ -75,13 +73,13 @@ computer.input = computer.input |> filter(site %in% c("Jerrod","Joule",
                                                       "Vacation", "6thBridge",
                                                       "StartMel", "JetportSouth"))
 
-# merge human and computer files by assessment location using function JoinInputs
+# merge human and computer files by assessment location
 
 joined.data = JoinInputs(visual.input, computer.input) 
 
-# create known_nest column for bird-bird-bird 
+# Create computer nest prediction column for bird-bird-bird 
 #    joined.data contains nest predictions (known_nest = yes or no) using the 
-#    bird-bird rule (i.e. 2 consective bird detections or 3+ detections over the 
+#    bird-bird rule (i.e. 2 consecutive bird detections or 3+ detections over the 
 #    time series). Because bird-bird-bird (3+ detections over the time series) 
 #    is a subset of the bird-bird rule, we filtered observations to remove all 
 #    nest detections where num_obs (number of bird detections) = 2.
@@ -92,10 +90,6 @@ joined.data = joined.data |> mutate(bird.3.nest = ifelse(known_nest == 'yes' & n
 #   794 because nests without a human assessment are dropped in the join. This 
 #   includes both unassessed colonies (Joule 2022) and nest locations scored as U (Uncertain)
 nest.data = joined.data |>  filter(nest == "T" | nest == "F")
-
-# extract human assessment = U (uncertain) records for post-hoc assessment of why
-#   classified as U
-uncertain = joined.data |>  filter(nest == "U")
 
 # CALCULATE PRECISION AND RECALL AND SAMPLE SIZE
 #   Bird-bird+
@@ -125,13 +119,17 @@ false.negative2 = sum(nest.data$nest == "T" & nest.data$known_nest == "no")
 false.positive3 = sum(nest.data$nest == "F" & nest.data$bird.3.nest == "yes")
 false.negative3 = sum(nest.data$nest == "T" & nest.data$bird.3.nest == "no")
 
-# Assess impact of Jetport South colony on averages
+# Extract human assessment = U (uncertain) records for post-hoc assessment of why sample
+#   classified as U
+uncertain = joined.data |>  filter(nest == "U")
+
+# Calculate average metrics without Jetport South colony
 drop.Jetport22 = bird.bird.bird |> filter(Site !="JetportSouth" | Year !="2022")
 avg.nojet22.recall = mean(na.omit(drop.Jetport22$Recall))
 avg.nojet22.precision = mean(na.omit(drop.Jetport22$Precision))
 
 # PLOTTING
-
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#0072B2", "#D55E00", "#CC79A7")
 # bird-bird+ vs bird-bird-bird
 #   reorganize data for plotting 
 precision.recall.2.3 = left_join(bird.bird.plus, bird.bird.bird, by=c("Site"="Site", "Year"="Year"))
@@ -139,35 +137,45 @@ precision.recall.2.3 = precision.recall.2.3 |> rename(Precision2=Precision.x, Pr
 precision.recall.2.3 = precision.recall.2.3 |> select(c(-detections.x, -detections.y)) 
 
 # plot recall and precision
-plot.precision.23 =ggplot(precision.recall.2.3, aes(x=Precision2, y=Precision3, color=Site, shape=factor(Year))) +
-  geom_point(aes(shape = factor(Year)), size = 5) + xlim(0.5,1) + ylim(0.5,1) + 
-  scale_color_grey() +
+plot.precision.23 =ggplot(precision.recall.2.3, aes(x=Precision2, y=Precision3)) +
+  geom_point(aes(shape=factor(Year), color=Site), show.legend=FALSE, size = 4) + 
+  scale_color_manual(values=cbPalette) +
+  xlim(0.5,1.01) + 
+  ylim(0.5,1.01) + 
   theme(axis.title = element_text(size = 15), axis.text = element_text(size= 10)) +
   geom_abline(intercept=0, slope = 1) + 
-  theme(axis.title.x = element_blank()) +
-  theme(legend.position="none") +
   xlab("bird-bird+") + ylab("bird-bird-bird") +
-  ggtitle("Precision")
+  ggtitle("Precision") +
+  theme_bw()
 plot.precision.23
 
-plot.recall.23 = ggplot(precision.recall.2.3, aes(x=Recall2, y=Recall3, , color=factor(Year))) +
-  geom_point(aes(shape = Site), size = 5) + xlim(0.5,1) + ylim(0.5,1) + scale_color_manual(values=c("black","gray46", "red")) +
+plot.recall.23 = ggplot(precision.recall.2.3, aes(x=Recall2, y=Recall3)) +
+  geom_point(aes(shape = factor(Year), color = Site), size = 4) + 
+  scale_color_manual(values=cbPalette) +
+  xlim(0.5,1.01) + 
+  ylim(0.5,1.01) + 
   theme(axis.title = element_text(size = 15), axis.text = element_text(size= 10)) +
-  geom_abline(intercept=0, slope = 1) + theme(legend.position="bottom") +
-  labs(x="bird-bird-plus", y="bird-bird-bird", color= "Year") +
-  ggtitle("Recall")
+  geom_abline(intercept=0, slope = 1) + 
+  xlab("bird-bird+") + ylab("bird-bird-bird") +
+  labs(shape = "Year") +
+  ggtitle("Recall") +
+  theme_bw() +
+  theme(legend.position="bottom")
+ 
+plot.recall.23
 
 combined = plot.precision.23/plot.recall.23
-# Opening the graphical device
+combined
+# PRINT FIGURES
+#   bird-bird-bird vs. bird-bird-plus
 tiff("bird2_bird3.tiff",
-    width = 1600,
-    height = 1600, 
+    width = 4600,
+    height = 4600, 
     units = "px", 
-    res = 300, 
-    compression = "lzw",
+    res = 800, 
+#    compression = "lzw",
     bg = "white", 
-    pointsize = 10)
-
+    pointsize = 5)
 
 # Creating a plot
 plot(combined)
@@ -223,16 +231,13 @@ AI_T_3 = sum(uncertains3$known_nest == "yes")
 AI_F_3 = sum(uncertains3$known_nest == "no")
 
 
-plot.precision.23 =ggplot(precision.recall.2.3, aes(x=Precision2, y=Precision3, color=factor(Year))) +
-  geom_point(aes(shape=Site), size = 5) + 
-  scale_colour_viridis_d() +
-#  scale_shape_manual(values=c(21,22,25))+
+plot.precision.23 =ggplot(precision.recall.2.3, aes(x=Precision2, y=Precision3)) +
+  geom_point(aes(shape=factor(Year), color=Site), show.legend=FALSE, size = 5) + 
   xlim(0.5,1) + 
   ylim(0.5,1) + 
   theme(axis.title = element_text(size = 15), axis.text = element_text(size= 10)) +
   geom_abline(intercept=0, slope = 1) + 
   theme(axis.title.x = element_blank()) +
-  theme(legend.position="none") +
   xlab("bird-bird+") + ylab("bird-bird-bird") +
   ggtitle("Precision") +
   theme_bw()
