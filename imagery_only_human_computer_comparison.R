@@ -105,9 +105,9 @@ bird3.nest.sample = data.bird.bird.bird |> group_by(site, year) |> summarise(cou
 bird.bird.bird = EvaluateNests(data.bird.bird.bird, "bird.3.nest")
 bird.bird.bird$detections = "3+"
 
-
 # POST-HOC INTERPRETATION
-# generate list of nests where AI and human differed in assessment
+
+## Generate list of nests where algorithm and human differed in assessment
 nest.diffs.2 = FindDiffs(nest.data, "nest", "known_nest")
 nest.diff.3 = FindDiffs(nest.data, "nest", "bird.3.nest")
 false.positive2 = sum(nest.data$nest == "F" & nest.data$known_nest == "yes")
@@ -115,27 +115,60 @@ false.negative2 = sum(nest.data$nest == "T" & nest.data$known_nest == "no")
 false.positive3 = sum(nest.data$nest == "F" & nest.data$bird.3.nest == "yes")
 false.negative3 = sum(nest.data$nest == "T" & nest.data$bird.3.nest == "no")
 
-# Extract human assessment = U (uncertain) records for post-hoc assessment of why sample
-#   classified as U
+## Assess Uncertain human assessments
+### Extract human assessment = U (uncertain) records
 uncertain = joined.data |>  filter(nest == "U")
 
-# Calculate average metrics without Jetport South colony
+## Assess impact of Jetport South 2022 colony
 drop.Jetport22 = bird.bird.bird |> filter(Site !="JetportSouth" | Year !="2022")
 avg.nojet22.recall = mean(na.omit(drop.Jetport22$Recall))
 avg.nojet22.precision = mean(na.omit(drop.Jetport22$Precision))
 
-# MAKE FIGURES
+# MAKE RESULTS FIGURES
+
+## Figure 5 and 6: By Year and Colony - bird-bird-bird only (Figure 5)
+
+###   organize data for plots
+colony.year.results = bird.bird.bird |> 
+  gather(metric, value, Precision:Recall) |>
+  filter(!is.na(value))
+  
+average.metrics = bird.bird.bird |> 
+  summarise(Precision = mean(na.omit(Precision)), Recall = mean(na.omit(Recall))) |> 
+  gather(key="metric", value = "value")
+
+### Figure 5: By Year
+figure5 = ggplot(colony.year.results, aes(x=factor(Year), y=value)) +
+  geom_violin(trim=FALSE, draw_quantiles = c(0.5)) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1, position = position_dodge(.9)) +
+  ylim(0,1) +
+  labs(x = "Year", y = "Performance Metric") +
+  theme(axis.title = element_text(size = 20), axis.text = element_text(size= 15),
+        plot.title = element_text(size = 20), strip.text.y = element_text(size = 20), strip.text = element_text(size = 20)) +
+  facet_wrap(~metric, nrow=2) + geom_hline(data=average.metrics, aes(yintercept= value),linetype=3, size=1)
+
+### Figure 6: By Colony
+figure6 = ggplot(colony.year.results, aes(x=factor(Site), y=value)) +
+  geom_violin(trim=FALSE, draw_quantiles = c(0.5)) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
+  ylim(0,1) + facet_grid(rows="metric") +
+  labs(x = "Site", y = "Performance Metric") +
+  theme(axis.title = element_text(size = 20), axis.text.y = element_text(size=15), 
+        axis.text.x = element_text(size= 15, angle = 90, vjust=0.5),
+        plot.title = element_text(size = 20), strip.text = element_text(size = 20)) +
+  facet_wrap(~metric, nrow=2) + geom_hline(data=average.metrics, aes(yintercept= value),linetype=3, size=1)
+
+# Figure 7: Bird-bird+ vs bird-bird-bird
 
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#0072B2", "#D55E00", "#CC79A7")
 
-# Bird-bird+ vs bird-bird-bird
-#   reorganize data for plotting 
+##   reorganize data for plotting 
 precision.recall.2.3 = left_join(bird.bird.plus, bird.bird.bird, by=c("Site"="Site", "Year"="Year"))
 precision.recall.2.3 = precision.recall.2.3 |> rename(Precision2=Precision.x, Precision3 = Precision.y, Recall2=Recall.x, Recall3=Recall.y)
 precision.recall.2.3 = precision.recall.2.3 |> select(c(-detections.x, -detections.y)) 
 
-#   plot recall and precision
-plot.precision.23 =ggplot(precision.recall.2.3, aes(x=Precision2, y=Precision3)) +
+##   Figure 7: recall and precision 
+plot.precision.23 = ggplot(precision.recall.2.3, aes(x=Precision2, y=Precision3)) +
   geom_point(aes(shape=factor(Year), color=Site), show.legend=FALSE, size = 4) + 
   scale_color_manual(values=cbPalette) +
   xlim(0.5,1.01) + 
@@ -158,41 +191,35 @@ plot.recall.23 = ggplot(precision.recall.2.3, aes(x=Recall2, y=Recall3)) +
   ggtitle("Recall") +
   theme_bw() +
   theme(legend.position="bottom")
- 
-combined = plot.precision.23/plot.recall.23
 
-# Plots for Across Colony or Year - bird-bird-bird only
-#   organize data for plots
-colony.year.results = bird.bird.bird |> gather(metric, value, Precision:Recall)
-year.means.precision = bird.bird.bird |> group_by(Year) |> summarise(mean_precision = mean(na.omit(Precision)))
-year.means.recall = bird.bird.bird |> group_by(Year) |> summarise(mean_recall = mean(na.omit(Recall)))
+figure7 = plot.precision.23/plot.recall.23
 
-### By Year
-ggplot(colony.year.results, aes(x=factor(Year), y=value)) +
-  geom_violin(trim=FALSE, draw_quantiles = c(0.5)) +
-  geom_dotplot(binaxis='y', stackdir='center', dotsize=1, position = position_dodge(.9)) +
-  ylim(0,1) +
-  labs(x = "Year", y = "Performance Metric") +
-  theme(axis.title = element_text(size = 20), axis.text = element_text(size= 15),
-        plot.title = element_text(size = 20), strip.text.y = element_text(size = 20), strip.text = element_text(size = 20)) +
-  facet_wrap(~metric, nrow=2) + geom_hline(data=average.metrics, aes(yintercept= value),linetype=3, size=1)
-avgbird3.recall = mean(na.omit(bird.bird.bird$Recall))
-avgbird3.precision = mean(na.omit(bird.bird.bird$Precision))
-### By Colony
-ggplot(colony.year.results, aes(x=factor(Site), y=value)) +
-  geom_violin(trim=FALSE, draw_quantiles = c(0.5)) +
-  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
-  ylim(0,1) + facet_grid(rows="metric") +
-  labs(x = "Site", y = "Performance Metric") +
-  geom_hline(data=average_metrics, aes(yintercept= value),linetype=3, size=1) +
-  theme(axis.title = element_text(size = 20), axis.text.y = element_text(size=15), 
-        axis.text.x = element_text(size= 15, angle = 90, vjust=0.5),
-        plot.title = element_text(size = 20), strip.text = element_text(size = 20)) +
-  facet_wrap(~metric, nrow=2) + geom_hline(data=average_metrics, aes(yintercept= value),linetype=3, size=1)
 
 # PRINT FIGURES
+tiff("figure5.tiff",
+     width = 4600,
+     height = 4600, 
+     units = "px", 
+     res = 800, 
+     #    compression = "lzw",
+     bg = "white", 
+     pointsize = 5)
+plot(figure5)
+dev.off()
+
+tiff("figure6.tiff",
+     width = 4600,
+     height = 4600, 
+     units = "px", 
+     res = 800, 
+     #    compression = "lzw",
+     bg = "white", 
+     pointsize = 5)
+plot(figure6)
+dev.off()
+
 #   bird-bird-bird vs. bird-bird-plus
-tiff("bird2_bird3.tiff",
+tiff("figure7.tiff",
     width = 4600,
     height = 4600, 
     units = "px", 
@@ -202,55 +229,10 @@ tiff("bird2_bird3.tiff",
     pointsize = 5)
 
 # Creating a plot
-plot(combined)
-
+plot(figure7)
+dev.off()
 # Closing the graphical device
 dev.off() 
 
 
-# 3+ colony and year results
-#  organize data for plots
-colony.year.results = bird.bird.bird |> gather(metric, value, Precision:Recall)
 
-### By Year
-ggplot(colony.year.results, aes(x=factor(Year), y=value)) +
-  geom_violin(trim=FALSE, draw_quantiles = c(0.5)) +
-  geom_dotplot(binaxis='y', stackdir='center', dotsize=1, position = position_dodge(.9)) +
-  ylim(0,1) +
-  labs(x = "Year", y = "Performance Metric") +
-  theme(axis.title = element_text(size = 20), axis.text = element_text(size= 15),
-        plot.title = element_text(size = 20), strip.text.y = element_text(size = 20), strip.text = element_text(size = 20)) +
-  facet_wrap(~metric, nrow=2) + geom_hline(data=average_metrics, aes(yintercept= value),linetype=3, size=1)
-
-### By Colony
-ggplot(colony.year.results, aes(x=factor(Site), y=value)) +
-  geom_violin(trim=FALSE, draw_quantiles = c(0.5)) +
-  geom_dotplot(binaxis='y', stackdir='center', dotsize=1) +
-  ylim(0,1) + facet_grid(rows="metric") +
-  labs(x = "Site", y = "Performance Metric") +
-  geom_hline(data=average_metrics, aes(yintercept= value),linetype=3, size=1) +
-  theme(axis.title = element_text(size = 20), axis.text.y = element_text(size=15), 
-        axis.text.x = element_text(size= 15, angle = 90, vjust=0.5),
-        plot.title = element_text(size = 20), strip.text = element_text(size = 20)) +
-  facet_wrap(~metric, nrow=2) + geom_hline(data=average_metrics, aes(yintercept= value),linetype=3, size=1)
-
-# Assess uncertains: 
-# Bird-bird-plus: 
-uncertains2 =length(uncertain$known_nest)
-computer.T.2 = sum(uncertain$known_nest == "yes")
-computer.F.2 = sum(uncertain$known_nest == "no")
-
-# Bird-bird-bird: 
-
-Uncertain_total_3 = length(uncertains$known_nest)
-AI_T_3 = sum(uncertains3$known_nest == "yes")
-AI_F_3 = sum(uncertains3$known_nest == "no")
-
-
-### all years and colonies
-ggplot(colony.year.results, aes(x=metric, y=value, fill=metric)) +
-  geom_violin(trim=FALSE, draw_quantiles = c(0.5)) +
-  geom_dotplot(binaxis='y', stackdir='center', dotsize=1, position = position_dodge(.9)) +
-  theme(axis.title = element_text(size = 20), axis.text = element_text(size= 15),
-        plot.title = element_text(size = 20)) +
-  ylim(0,1) + ggtitle("All Colonies, All Years, 3 detections or more")
